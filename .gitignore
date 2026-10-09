@@ -1,0 +1,22 @@
+# Local environment and generated output
+.venv/
+__pycache__/
+site/
+data/
+results/
+.claude/
+
+# Personal / planning documents and analysis (kept local, not published)
+*.docx
+AppF_CoefficientsCalculation.txt
+codebase.txt
+TickerWeights.txt
+coefficients_review.md
+plan.md
+alerts.md
+session_logs/
+optimize.py
+fetch_history.py
+early_signal.py
+near_ath_signal.py
+yearly_ratio.py

@@ -1,0 +1,5 @@
+Ticker, Title, Asset Mix, Fund Type
+TRRDX, T. Rowe Price Retirement 2040 Fund, Glide Path, Actively Managed Target-Date Retirement Fund
+VBIAX,Vanguard Balanced Index Fund Admiral Shares, 60 (Morningstar US Total Market Index) / 40 (Bloomberg U.S. Aggregate Float Adjusted Index) ,Passively Managed Balanced/Asset Allocation Index Fund
+VEXPX, Vanguard Explorer Fund Investor Shares, 100% Equity, Actively Managed Small- and Mid-Cap Growth Equity Fund
+VFIAX, Vanguard 500 Index Fund Admiral Shares, 100% Equity, S&P 500
