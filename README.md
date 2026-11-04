@@ -1,4 +1,4 @@
-# Fund Sell Scores dashboard
+# Fund Crest Tracker
 
 Builds a static page of daily Sell Score charts for a few mutual funds and publishes it
 with GitHub Pages. A GitHub Actions workflow runs each weekday evening (and on demand).

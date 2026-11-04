@@ -5,6 +5,8 @@ on:
     # 02:00 UTC Tue-Sat = about 9-10 pm ET Mon-Fri, after mutual-fund prices post
     - cron: "0 2 * * 2-6"
   workflow_dispatch:   # "Run workflow" button for manual runs
+  push:                # publish code changes right away
+    branches: [main]
 
 permissions:
   contents: read

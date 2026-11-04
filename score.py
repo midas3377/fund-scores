@@ -52,6 +52,7 @@ def compute_features(prices: pd.DataFrame, z_window: int = 60, dt: str = "tradin
 
     # "ATH" = running max of the fetched prices (a true ATH when full history is fetched)
     df["ATH"] = adj.cummax()
+    df["ATH_Date"] = df["Date"].where(adj >= df["ATH"]).ffill()  # date of the latest ATH
     df["Ratio_to_ATH"] = adj / df["ATH"]
     df["DayOfYear"] = df["Date"].dt.dayofyear / 366.0
     return df

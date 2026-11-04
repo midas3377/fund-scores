@@ -59,6 +59,24 @@ def _score_chart(df: pd.DataFrame, settings: dict, title: str, x_range: list,
     y2_min = float(adj.min()) * 0.9
     y2_max = 2 * (y2_ref - y2_min) + y2_min
 
+    # All-time high behind % of ATH: marker with its date, dashed line across to the price axis
+    ath, ath_date = float(df["ATH"].iloc[-1]), df["ATH_Date"].iloc[-1]
+    y2_max = max(y2_max, ath * 1.04)
+    in_view = ath_date >= x_range[0]
+    line_start = ath_date if in_view else x_range[0]
+    fig.add_trace(go.Scatter(x=[line_start, x_range[1]], y=[ath, ath], name="All-Time High", yaxis="y2", showlegend=False,
+                             mode="lines", line=dict(color="gray", dash="dash", width=1.5), hoverinfo="skip"))
+    label = f"ATH ${ath:,.2f} on {ath_date:%m/%d/%Y}"
+    if in_view:
+        fig.add_trace(go.Scatter(x=[ath_date], y=[ath], yaxis="y2", mode="markers", showlegend=False,
+                                 hoverinfo="skip", cliponaxis=False,
+                                 marker=dict(color="#f5b83d", size=11, line=dict(color="blue", width=1.5))))
+    else:
+        label += " (before this chart)"
+    late = in_view and ath_date > x_range[0] + (x_range[1] - x_range[0]) / 2
+    fig.add_annotation(x=line_start, y=ath, yref="y2", text=label, showarrow=False, yanchor="bottom",
+                       yshift=6, xanchor="right" if late else "left", font=dict(color="dimgray", size=12))
+
     smooth_max = float(df["ScoreSmooth"].max())
     y1_max = axis_max if smooth_max <= axis_max else 5 * math.ceil(smooth_max / 5)
 
