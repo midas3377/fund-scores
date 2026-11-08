@@ -24,9 +24,38 @@ def fetch_prices(ticker: str) -> pd.DataFrame:
                      progress=False, multi_level_index=False)
     if df is None or df.empty:
         raise RuntimeError(f"No price data returned for {ticker}")
-    df = df.reset_index()[["Date", "Adj Close"]].dropna()
+    df = df.reset_index()[["Date", "High", "Low", "Close", "Adj Close"]].dropna()
     df["Date"] = pd.to_datetime(df["Date"]).dt.tz_localize(None)
+    # Put High/Low/Close on the same adjusted basis as Adj Close
+    f = df["Adj Close"] / df["Close"]
+    df["High"], df["Low"], df["Close"] = df["High"] * f, df["Low"] * f, df["Adj Close"]
     return df.sort_values("Date").reset_index(drop=True)
+
+
+MA_WINDOWS = (5, 10, 20, 50, 100)  # trading days
+ADX_N = 14
+
+
+def add_indicators(df: pd.DataFrame, n: int = ADX_N) -> pd.DataFrame:
+    """Simple moving averages of Adj Close, and Wilder's ADX / +DI / -DI from High/Low/Close.
+    Mutual funds report one price a day (High = Low = Close), so for them the ranges collapse
+    to close-to-close moves and +DI + -DI = 100."""
+    df = df.copy()
+    for w in MA_WINDOWS:
+        df[f"MA{w}"] = df["Adj Close"].rolling(w).mean()
+    h, l, c = df["High"], df["Low"], df["Close"]
+    up, down = h.diff(), -l.diff()
+    plus_dm = up.where((up > down) & (up > 0), 0.0)
+    minus_dm = down.where((down > up) & (down > 0), 0.0)
+    tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
+    wilder = lambda s: s.ewm(alpha=1 / n, adjust=False).mean()
+    atr = wilder(tr)
+    df["+DI"] = 100 * wilder(plus_dm) / atr
+    df["-DI"] = 100 * wilder(minus_dm) / atr
+    dx = 100 * (df["+DI"] - df["-DI"]).abs() / (df["+DI"] + df["-DI"])
+    df["ADX"] = wilder(dx)
+    df["OnePrice"] = bool((h == l).all())
+    return df
 
 
 FEATURES = ["Ratio_to_ATH", "DayOfYear", "v_z", "a_z", "j_z"]
@@ -85,4 +114,5 @@ def ticker_scores(ticker: str, weights: dict, settings: dict,
     start = start_date(today)
     df = compute_score(fetch_prices(ticker), weights,
                        settings.get("z_window", 60), settings.get("smooth_window", 7))
+    df = add_indicators(df)  # on full history, so every value is warmed up
     return df[df["Date"] >= start].reset_index(drop=True)

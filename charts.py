@@ -9,6 +9,7 @@ import math
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 HEIGHT = 560
 BASE_LAYOUT = dict(
@@ -157,4 +158,59 @@ def decomposition_chart(df: pd.DataFrame, ticker: str) -> go.Figure:
         xaxis=dict(hoverformat="%m/%d/%Y"),
         yaxis=dict(title=dict(text="Score Contribution")),
     )
+    return fig
+
+
+MA_COLORS = {5: "#17becf", 10: "#f28e2b", 20: "#59a14f", 50: "#b07aa1", 100: "#e15759"}
+
+
+def ma_adx_chart(df: pd.DataFrame, ticker: str) -> go.Figure:
+    """Trailing year: Adj Close, moving averages, all-time high; ADX / +DI / -DI below."""
+    last_date = df["Date"].max()
+    start = last_date - pd.DateOffset(years=1)
+    d = df[df["Date"] >= start]
+    last = d.iloc[-1]
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.72, 0.28],
+                        vertical_spacing=0.07)
+    fig.add_trace(go.Scatter(x=d["Date"], y=d["Adj Close"], name="Adj Close",
+                             line=dict(color="blue", width=2.5)), row=1, col=1)
+    for w, color in MA_COLORS.items():
+        fig.add_trace(go.Scatter(x=d["Date"], y=d[f"MA{w}"], name=f"{w}-day avg",
+                                 line=dict(color=color, width=1.6)), row=1, col=1)
+
+    ath, ath_date = float(last["ATH"]), last["ATH_Date"]
+    label = f"ATH ${ath:,.2f} on {ath_date:%m/%d/%Y}"
+    if ath_date >= start:
+        fig.add_trace(go.Scatter(x=[ath_date], y=[ath], mode="markers", showlegend=False,
+                                 hoverinfo="skip", cliponaxis=False,
+                                 marker=dict(color="#f5b83d", size=11, line=dict(color="blue", width=1.5))),
+                      row=1, col=1)
+        late = ath_date > start + (last_date - start) / 2
+        fig.add_annotation(x=ath_date, y=ath, text=label, showarrow=False, yanchor="bottom", yshift=8,
+                           xanchor="right" if late else "left", font=dict(color="dimgray", size=12),
+                           row=1, col=1)
+    else:
+        fig.add_annotation(x=0, xref="x domain", y=1, yref="y domain", text=label + " (before this chart)",
+                           showarrow=False, xanchor="left", yanchor="top", font=dict(color="dimgray", size=12))
+
+    fig.add_trace(go.Scatter(x=d["Date"], y=d["ADX"], name="ADX",
+                             line=dict(color="black", width=2)), row=2, col=1)
+    fig.add_trace(go.Scatter(x=d["Date"], y=d["+DI"], name="+DI",
+                             line=dict(color="#2ca02c", width=1.5)), row=2, col=1)
+    fig.add_trace(go.Scatter(x=d["Date"], y=d["-DI"], name="−DI",
+                             line=dict(color="#d62728", width=1.5)), row=2, col=1)
+    fig.add_hline(y=25, line=dict(color="gray", dash="dot", width=1), row=2, col=1,
+                  annotation_text="25", annotation_position="right")
+
+    fig.update_layout(
+        template="plotly_white", height=760, hovermode="x unified", hoversubplots="axis",
+        title=dict(text=f"<b>{ticker}: Moving Averages and ADX, Trailing Year</b>"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="left", x=0),
+        margin=dict(l=60, r=60, t=90, b=50),
+    )
+    fig.update_xaxes(dtick="M1", tickformat="%m/%y", hoverformat="%m/%d/%Y", showticklabels=True,
+                     range=[start, last_date + pd.Timedelta(days=5)])
+    fig.update_yaxes(title_text="Adj Close ($)", tickprefix="$", row=1, col=1)
+    fig.update_yaxes(title_text="ADX / DI", row=2, col=1,
+                     range=[0, 100] if bool(last["OnePrice"]) else None)
     return fig

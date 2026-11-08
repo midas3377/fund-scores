@@ -11,7 +11,7 @@ from pathlib import Path
 import plotly
 import yaml
 
-from charts import decomposition_chart, span_chart, year_chart
+from charts import decomposition_chart, ma_adx_chart, span_chart, year_chart
 from score import ticker_scores
 
 HERE = Path(__file__).parent
@@ -111,7 +111,25 @@ def info_panel(threshold: float) -> str:
         to compare this year with recent years.</li>
       <li><b>Decomposition of Score Drivers</b>: how much each of the five ingredients
         contributes to the score each day.</li>
+      <li><b>Moving Averages and ADX, Trailing Year</b>: price over the past year with its
+        moving averages, and a trend-strength panel below (explained next).</li>
     </ul>
+
+    <h3>Moving Averages and ADX chart</h3>
+    <p>The top panel shows the price (blue) with its 5-, 10-, 20-, 50- and 100-day moving
+    averages: the average closing price over that many trading days. Short averages follow the
+    price closely; long ones show the slower trend. A price above its averages generally means
+    it has been rising, and below them that it has been falling. The gold dot marks the
+    all-time high and its date, if it falls within the year shown.</p>
+    <p>The lower panel shows trend strength. <b>ADX</b> (black) measures how strong the
+    recent trend is, whether up or down: readings above about 25 (dotted line) are usually
+    read as a strong trend, below 20 as little trend. <b>+DI</b> (green) and <b>&minus;DI</b>
+    (red) show which way it points: +DI above &minus;DI means recent moves have been mostly
+    up. Both use the standard 14-day setting.</p>
+    <p class="note">These funds publish one price per day, so these indicators are based on
+    day-to-day price changes rather than the daily high and low a stock would have. As a
+    result +DI and &minus;DI always add up to 100 and mirror each other. The two panels share
+    one date axis, so zooming or panning one moves the other.</p>
     <p class="note">Hover over any chart to read exact values; drag to zoom, double-click to
     reset. On a phone, tap a chart to read values and use the buttons above it to change the
     date range. Prices come from Yahoo Finance and update after each trading day's fund prices
@@ -158,6 +176,7 @@ def build() -> Path:
                 year_chart(df, ticker, settings),
                 span_chart(df, ticker, settings),
                 decomposition_chart(df, ticker),
+                ma_adx_chart(df, ticker),
             ))
         except Exception as e:  # keep the rest of the page working if one ticker fails
             rows.append(f'<tr class="err"><td class="c-ticker">{ticker}</td>'
@@ -255,20 +274,24 @@ PHONE_JS = """
                  'xaxis.dtick': months === 1 ? 7 * 864e5 : (months === 'ytd' ? 'M2' : 'M1'),
                  'xaxis.tickformat': '%m/%d', 'xaxis.nticks': null};
     // Rescale price to the visible dates so small moves can be seen (same lower-half layout)
+    // the two-panel chart's date axes are linked through the lower one, so set both
+    if (ph.stack) Object.assign(upd, {'xaxis2.range': upd['xaxis.range'], 'xaxis2.dtick': upd['xaxis.dtick'],
+                                      'xaxis2.tickformat': '%m/%d', 'xaxis2.nticks': null});
     const price = el.calcdata.find(cd => cd[0].trace.name === 'Adj Close');
     if (price) {
       const ys = price.filter(p => p.x >= start && p.x <= end).map(p => p.y);
       if (ys.length) {
         const lo = Math.min(...ys), hi = Math.max(...ys), h = Math.max(hi - lo, lo * 0.005);
-        upd['yaxis2.range'] = [lo - h * 0.1, lo + h * 2];
+        if (ph.stack) upd['yaxis.range'] = [lo - h * 0.08, hi + h * 0.15];
+        else upd['yaxis2.range'] = [lo - h * 0.1, lo + h * 2];
       }
     }
     Plotly.relayout(el, upd);
   }
 
   function phonify(el) {
-    const fl = el._fullLayout, isScore = !!fl.yaxis2;
-    const title = fl.title.text.replace('Sell Score for ', '');
+    const fl = el._fullLayout, isScore = !!(fl.yaxis2 && fl.yaxis2.overlaying), stack = !!fl.xaxis2;
+    const title = fl.title.text.replace('Sell Score for ', '').replace(', Trailing Year', '');
     const dtick = {M1: 'M2', M3: 'M6'}[fl.xaxis.dtick];
     const upd = {
       dragmode: false, 'title.text': title, 'title.font.size': 13, 'title.x': 0.02,
@@ -286,8 +309,19 @@ PHONE_JS = """
     el._phone = {all: {'xaxis.range': fl.xaxis.range.slice(), 'xaxis.dtick': dtick || null,
                        'xaxis.tickformat': fl.xaxis.tickformat || '', 'xaxis.nticks': dtick ? null : 6}};
     if (isScore) el._phone.all['yaxis2.range'] = fl.yaxis2.range.slice();
-    el.layout.height = 480;  // set directly: relayout on height would freeze the width
-    el.style.height = '480px';
+    if (stack) {
+      el._phone.stack = true;
+      Object.assign(upd, {'xaxis2.fixedrange': true, 'yaxis2.fixedrange': true, 'yaxis2.title.text': '',
+                          'yaxis2.tickfont.size': 10, 'xaxis2.tickfont.size': 10,
+                          'legend.y': -0.05, margin: {l: 40, r: 22, t: 36, b: 28}});
+      if (dtick) upd['xaxis2.dtick'] = dtick;
+      Object.assign(el._phone.all, {'yaxis.range': fl.yaxis.range.slice(), 'xaxis2.range': fl.xaxis2.range.slice(),
+                                    'xaxis2.dtick': dtick || null,
+                                    'xaxis2.tickformat': fl.xaxis2.tickformat || ''});
+    }
+    const height = stack ? 640 : 480;
+    el.layout.height = height;  // set directly: relayout on height would freeze the width
+    el.style.height = height + 'px';
     const bar = document.createElement('div');
     bar.className = 'ranges';
     [['1M', 1], ['3M', 3], ['6M', 6], ['YTD', 'ytd'], ['All', null]].forEach(([label, months]) => {
