@@ -216,7 +216,17 @@ def ma_adx_chart(df: pd.DataFrame, ticker: str) -> go.Figure:
                      spikecolor="gray", spikedash="dot")
     fig.update_xaxes(dtick="M1", tickformat="%m/%y", hoverformat="%m/%d/%Y", showticklabels=True,
                      range=[start, last_date + pd.Timedelta(days=5)])
-    fig.update_yaxes(title_text="Adj Close ($)", tickprefix="$", row=1, col=1)
+    # price labels on both sides: a right-hand axis given the same fixed range as the left one
+    # (the page script keeps them in step when zooming)
+    vals = d[["Adj Close"] + [f"MA{w}" for w in MA_COLORS]].to_numpy().ravel()
+    lo, hi = float(np.nanmin(vals)), max(float(np.nanmax(vals)), ath if ath_date >= start else 0)
+    pad = (hi - lo) * 0.05
+    y_range = [lo - pad, hi + pad]
+    fig.update_yaxes(title_text="Adj Close ($)", tickprefix="$", range=y_range, row=1, col=1)
+    fig.add_trace(go.Scatter(x=d["Date"], y=d["Adj Close"], name="price (right axis)", yaxis="y3", xaxis="x",
+                             showlegend=False, hoverinfo="skip", line=dict(width=0), opacity=0))
+    fig.update_layout(yaxis3=dict(overlaying="y", anchor="x", side="right", range=y_range,
+                                  tickprefix="$", showgrid=False, zeroline=False))
     fig.update_yaxes(title_text="ADX / DI", row=2, col=1,
                      range=[0, 100] if bool(last["OnePrice"]) else None)
     return fig

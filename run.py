@@ -130,8 +130,9 @@ def info_panel(threshold: float) -> str:
     day-to-day price changes rather than the daily high and low a stock would have. As a
     result +DI and &minus;DI always add up to 100 and mirror each other. The two panels share
     one date axis, so zooming or panning one moves the other.</p>
-    <p class="note">Hovering (or tapping, on a phone) shows that day's values in a small box
-    fixed at the upper left of the chart, so it stays visible however the chart is zoomed.</p>
+    <p class="note">Hovering (or tapping, on a phone) shows that day's values in small boxes
+    fixed at the upper left of each panel, so they stay visible however the chart is zoomed.
+    Price labels appear on both sides of the top panel.</p>
     <p class="note">Hover over any chart to read exact values; drag to zoom, double-click to
     reset. On a phone, tap a chart to read values and use the buttons above it to change the
     date range. Prices come from Yahoo Finance and update after each trading day's fund prices
@@ -284,7 +285,7 @@ PHONE_JS = """
       const ys = price.filter(p => p.x >= start && p.x <= end).map(p => p.y);
       if (ys.length) {
         const lo = Math.min(...ys), hi = Math.max(...ys), h = Math.max(hi - lo, lo * 0.005);
-        if (ph.stack) upd['yaxis.range'] = [lo - h * 0.08, hi + h * 0.15];
+        if (ph.stack) upd['yaxis.range'] = upd['yaxis3.range'] = [lo - h * 0.08, hi + h * 0.15];
         else upd['yaxis2.range'] = [lo - h * 0.1, lo + h * 2];
       }
     }
@@ -315,11 +316,13 @@ PHONE_JS = """
       el._phone.stack = true;
       Object.assign(upd, {'xaxis2.fixedrange': true, 'yaxis2.fixedrange': true, 'yaxis2.title.text': '',
                           'yaxis2.tickfont.size': 10, 'xaxis2.tickfont.size': 10,
-                          'legend.y': -0.05, margin: {l: 40, r: 22, t: 36, b: 28}});
+                          'legend.y': -0.05, margin: {l: 40, r: 40, t: 36, b: 28}});
+      if (fl.yaxis3) Object.assign(upd, {'yaxis3.tickfont.size': 10, 'yaxis3.fixedrange': true});
       if (dtick) upd['xaxis2.dtick'] = dtick;
       Object.assign(el._phone.all, {'yaxis.range': fl.yaxis.range.slice(), 'xaxis2.range': fl.xaxis2.range.slice(),
                                     'xaxis2.dtick': dtick || null,
                                     'xaxis2.tickformat': fl.xaxis2.tickformat || ''});
+      if (fl.yaxis3) el._phone.all['yaxis3.range'] = fl.yaxis3.range.slice();
     }
     const height = stack ? 640 : 480;
     el.layout.height = height;  // set directly: relayout on height would freeze the width
@@ -339,30 +342,44 @@ PHONE_JS = """
     return Plotly.relayout(el, upd);
   }
 
-  // Fixed daily-values box in the upper left of the price panel (charts with layout.meta.readout)
+  // Fixed daily-values boxes, one in the upper left of each panel (charts with layout.meta.readout)
   function readout(el) {
     if (el._readout || !(el.layout.meta && el.layout.meta.readout)) return;
     el._readout = true;
     el.style.position = 'relative';
-    const box = document.createElement('div');
-    box.className = 'readout';
-    el.appendChild(box);
+    const boxes = {y: 'yaxis', y2: 'yaxis2'};
+    Object.keys(boxes).forEach(k => {
+      const box = document.createElement('div');
+      box.className = 'readout';
+      el.appendChild(box);
+      boxes[k] = {box, axis: boxes[k]};
+    });
     el.on('plotly_hover', ev => {
       // every line shares the same dates, so read all of them at the hovered day, in legend order
       const p0 = ev.points.find(p => p.data.name && el.calcdata[p.curveNumber].length > 1);
       if (!p0) return;
-      const i = p0.pointNumber;
+      const i = p0.pointNumber, fl = el._fullLayout, s = fl._size;
       const date = new Date(p0.x).toLocaleDateString('en-US', {timeZone: 'UTC', month: '2-digit', day: '2-digit', year: 'numeric'});
-      box.innerHTML = '<div class="rd-date">' + date + '</div><div class="rd-grid">' + el.calcdata.map(cd => cd[0].trace).filter(t => t.showlegend !== false && t.name && t.visible === true && el.calcdata[t.index].length > 1).map(t => {
-        const pt = el.calcdata[t.index][i], y = pt ? pt.y : null, v = y == null ? '–' : (t.yaxis === 'y2' ? y.toFixed(1) : '$' + y.toFixed(2));
-        return '<span><i style="background:' + t.line.color + '"></i>' + t.name.replace('-day avg', 'd') + '</span><b>' + v + '</b>';
-      }).join('') + '</div>';
-      const s = el._fullLayout._size;
-      box.style.left = (s.l + 6) + 'px';
-      box.style.top = (s.t + 4) + 'px';
-      box.style.display = 'block';
+      const lines = el.calcdata.map(cd => cd[0].trace).filter(t => t.showlegend !== false && t.name && t.visible === true && el.calcdata[t.index].length > 1);
+      Object.entries(boxes).forEach(([k, b]) => {
+        const rows = lines.filter(t => t.yaxis === k).map(t => {
+          const pt = el.calcdata[t.index][i], y = pt ? pt.y : null, v = y == null ? '–' : (k === 'y2' ? y.toFixed(1) : '$' + y.toFixed(2));
+          return '<span><i style="background:' + t.line.color + '"></i>' + t.name.replace('-day avg', 'd') + '</span><b>' + v + '</b>';
+        });
+        if (!rows.length || !fl[b.axis]) { b.box.style.display = 'none'; return; }
+        b.box.innerHTML = (k === 'y' ? '<div class="rd-date">' + date + '</div>' : '') + '<div class="rd-grid' + (k === 'y' ? '' : ' rd-row') + '">' + rows.join('') + '</div>';
+        b.box.style.left = (s.l + 6) + 'px';
+        b.box.style.top = (s.t + s.h * (1 - fl[b.axis].domain[1]) + 4) + 'px';
+        b.box.style.display = 'block';
+      });
     });
-    el.on('plotly_unhover', () => { box.style.display = 'none'; });
+    el.on('plotly_unhover', () => Object.values(boxes).forEach(b => { b.box.style.display = 'none'; }));
+    // keep the right-hand price labels (yaxis3) on the same scale as the left axis
+    if (el.layout.yaxis3) el.on('plotly_relayout', e => {
+      if (!Object.keys(e).some(k => k.startsWith('yaxis.'))) return;
+      const r = el._fullLayout.yaxis.range, r3 = el._fullLayout.yaxis3.range;
+      if (r[0] !== r3[0] || r[1] !== r3[1]) Plotly.relayout(el, {'yaxis3.range': r.slice()});
+    });
   }
 
   function prepare(el) {
@@ -436,6 +453,7 @@ TEMPLATE = """<!doctype html>
              font-size:11px; line-height:1.35; font-variant-numeric:tabular-nums; }}
   .readout .rd-date {{ font-weight:600; margin-bottom:1px; }}
   .readout .rd-grid {{ display:grid; grid-template-columns:auto auto auto auto; gap:0 6px; }}
+  .readout .rd-row {{ grid-template-columns:repeat(6, auto); }}
   .readout b {{ font-weight:600; text-align:right; }}
   .readout i {{ display:inline-block; width:8px; height:3px; margin:0 4px 2px 0; vertical-align:middle; }}
   html.phone .readout {{ font-size:10px; padding:3px 5px; }}
