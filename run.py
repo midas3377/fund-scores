@@ -130,6 +130,8 @@ def info_panel(threshold: float) -> str:
     day-to-day price changes rather than the daily high and low a stock would have. As a
     result +DI and &minus;DI always add up to 100 and mirror each other. The two panels share
     one date axis, so zooming or panning one moves the other.</p>
+    <p class="note">Hovering (or tapping, on a phone) shows that day's values in a small box
+    fixed at the upper left of the chart, so it stays visible however the chart is zoomed.</p>
     <p class="note">Hover over any chart to read exact values; drag to zoom, double-click to
     reset. On a phone, tap a chart to read values and use the buttons above it to change the
     date range. Prices come from Yahoo Finance and update after each trading day's fund prices
@@ -337,7 +339,34 @@ PHONE_JS = """
     return Plotly.relayout(el, upd);
   }
 
+  // Fixed daily-values box in the upper left of the price panel (charts with layout.meta.readout)
+  function readout(el) {
+    if (el._readout || !(el.layout.meta && el.layout.meta.readout)) return;
+    el._readout = true;
+    el.style.position = 'relative';
+    const box = document.createElement('div');
+    box.className = 'readout';
+    el.appendChild(box);
+    el.on('plotly_hover', ev => {
+      // every line shares the same dates, so read all of them at the hovered day, in legend order
+      const p0 = ev.points.find(p => p.data.name && el.calcdata[p.curveNumber].length > 1);
+      if (!p0) return;
+      const i = p0.pointNumber;
+      const date = new Date(p0.x).toLocaleDateString('en-US', {timeZone: 'UTC', month: '2-digit', day: '2-digit', year: 'numeric'});
+      box.innerHTML = '<div class="rd-date">' + date + '</div><div class="rd-grid">' + el.calcdata.map(cd => cd[0].trace).filter(t => t.showlegend !== false && t.name && t.visible === true && el.calcdata[t.index].length > 1).map(t => {
+        const pt = el.calcdata[t.index][i], y = pt ? pt.y : null, v = y == null ? '–' : (t.yaxis === 'y2' ? y.toFixed(1) : '$' + y.toFixed(2));
+        return '<span><i style="background:' + t.line.color + '"></i>' + t.name.replace('-day avg', 'd') + '</span><b>' + v + '</b>';
+      }).join('') + '</div>';
+      const s = el._fullLayout._size;
+      box.style.left = (s.l + 6) + 'px';
+      box.style.top = (s.t + 4) + 'px';
+      box.style.display = 'block';
+    });
+    el.on('plotly_unhover', () => { box.style.display = 'none'; });
+  }
+
   function prepare(el) {
+    readout(el);
     if (PHONE && !el._phone) phonify(el).then(() => Plotly.Plots.resize(el));
     else Plotly.Plots.resize(el);
   }
@@ -402,6 +431,14 @@ TEMPLATE = """<!doctype html>
   .info h3 {{ margin:18px 0 6px; font-size:16px; }}
   .info p, .info li {{ margin:4px 0; }}
   .info ul {{ padding-left:20px; margin:4px 0; }}
+  .readout {{ display:none; position:absolute; z-index:5; pointer-events:none; padding:4px 7px;
+             background:rgba(255,255,255,0.85); border:1px solid var(--line); border-radius:6px;
+             font-size:11px; line-height:1.35; font-variant-numeric:tabular-nums; }}
+  .readout .rd-date {{ font-weight:600; margin-bottom:1px; }}
+  .readout .rd-grid {{ display:grid; grid-template-columns:auto auto auto auto; gap:0 6px; }}
+  .readout b {{ font-weight:600; text-align:right; }}
+  .readout i {{ display:inline-block; width:8px; height:3px; margin:0 4px 2px 0; vertical-align:middle; }}
+  html.phone .readout {{ font-size:10px; padding:3px 5px; }}
   .swatch {{ display:inline-block; padding:0 6px; border-radius:4px; font-weight:600; }}
   @media (max-width:600px) {{ th, td {{ padding:8px 6px; font-size:13px; }} }}
 {phone_css}</style>

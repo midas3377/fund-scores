@@ -207,7 +207,13 @@ def ma_adx_chart(df: pd.DataFrame, ticker: str) -> go.Figure:
         title=dict(text=f"<b>{ticker}: Moving Averages and ADX, Trailing Year</b>"),
         legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="left", x=0),
         margin=dict(l=60, r=60, t=90, b=50),
+        meta={"readout": True},  # page script shows the daily values in a fixed box (upper left)
     )
+    for t in fig.data:  # no floating hover label; hover events still drive the fixed box
+        if t.hoverinfo != "skip":
+            t.hoverinfo = "none"
+    fig.update_xaxes(showspikes=True, spikemode="across", spikesnap="cursor", spikethickness=1,
+                     spikecolor="gray", spikedash="dot")
     fig.update_xaxes(dtick="M1", tickformat="%m/%y", hoverformat="%m/%d/%Y", showticklabels=True,
                      range=[start, last_date + pd.Timedelta(days=5)])
     fig.update_yaxes(title_text="Adj Close ($)", tickprefix="$", row=1, col=1)
